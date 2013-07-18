@@ -44,7 +44,7 @@ def gompertzmod():
                                         (lagtime-time)+1))
 
     sigma = mc.Uniform('sigma', lower=0, upper=100, value=1.)
-    y_obs = mc.Normal("y_obs", value=od600[:,0:3].transpose(),
+    y_obs = mc.Normal("y_obs", value=od600[:,0].transpose(),
                       mu=y_mean, tau=sigma**-2, observed=True)
     return vars()
 
