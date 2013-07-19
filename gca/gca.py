@@ -17,6 +17,8 @@ import numpy as np
 import pymc as mc
 import matplotlib.pyplot as plt
 import subprocess
+from scipy.stats.mstats import mquantiles
+
 
 def loaddata(argv):
     od600 = np.loadtxt("data/20130608_40C.csv", delimiter=",",
@@ -76,6 +78,12 @@ def plot_gompertzmod(m, ffname):
     plt.plot(time, np.mean(y_mean, axis=0),
              color='green', label='modified Gompertz growth model')
     decorate_plot()
+    # vectorized bottom and top 5% quantiles for "confidence interval"
+    #qs = mquantiles(p_t,[0.05,0.95],axis=0)
+    #plt.fill_between(t[:,0],*qs,alpha = 0.7,
+    #            color = "#7A68A6")
+    #plt.plot(t[:,0], qs[0], label="95% CI", color = "#7A68A6", alpha =0.7)
+
     plt.savefig(ffname,bbox_inches='tight',
         facecolor=fig1.get_facecolor(), edgecolor='none')
     plt.close()
