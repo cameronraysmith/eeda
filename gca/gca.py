@@ -18,6 +18,7 @@ import pymc as mc
 import matplotlib.pyplot as plt
 import subprocess
 from scipy.stats.mstats import mquantiles
+from pymc.Matplot import plot as mcplot
 
 
 def loaddata(argv):
@@ -55,8 +56,8 @@ def fit_gompertzmod():
 
     mc.MAP(model).fit(method='fmin_powell')
     m = mc.MCMC(model)
-    #m.sample(iter=10000, burn=5000, thin=5)
-    m.sample(iter=6000, burn=5000, thin=1)
+    m.sample(iter=10000, burn=5000, thin=5)
+    #m.sample(iter=6000, burn=5000, thin=1)
     return m
 
 def decorate_plot():
@@ -137,6 +138,13 @@ def plot_pardists(m, ffname):
         facecolor=fig2.get_facecolor(), edgecolor='none')
     plt.close()
 
+def plot_parcorr(m):
+    parnames = ["lagtime", "linslope", "carcap", "sigma"]
+    for par in parnames:
+        mcplot(m.trace(par), common_scale=False)
+        plt.savefig(par + ".pdf", bbox_inches='tight', edgecolor='none')
+        plt.close()
+
 def gca(argv):
     mcmcoutput = fit_gompertzmod()
 
@@ -145,8 +153,10 @@ def gca(argv):
     #evince = subprocess.check_output(["evince",growth_ffname])
 
     pars_ffname = "parfit.pdf"
-    plot_pardists(mcmcoutput, pars_ffname)
-    evince = subprocess.check_output(["evince",pars_ffname])
+    #plot_pardists(mcmcoutput, pars_ffname)
+    #evince = subprocess.check_output(["evince",pars_ffname])
+
+    plot_parcorr(mcmcoutput)
 
 if __name__ == "__main__":
     #import doctest
