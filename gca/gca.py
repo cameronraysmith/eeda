@@ -29,7 +29,9 @@ def loaddata(argv):
 
 def gompertzmod():
     od600, timemins = loaddata(None)
-
+    od600red = od600[:,0:10]
+    flatod600 = np.reshape(od600red,od600red.size,order='F') #F = column-major
+    flattime = np.resize(timemins,flatod600.size)
     # normal hyperparameter priors
     # lagtime = mc.Normal("lagtime", 100, 0.001, value=100)
     # linslope = mc.Normal("linslope", 0.05, 0.001, value=0.05)
@@ -42,12 +44,14 @@ def gompertzmod():
 
     @mc.deterministic
     def y_mean(lagtime=lagtime, linslope=linslope,
-                carcap=carcap, time=timemins):
+                carcap=carcap, time=flattime):
         return carcap*np.exp(-np.exp(linslope*np.exp(1)/carcap *
                                         (lagtime-time)+1))
 
     sigma = mc.Uniform('sigma', lower=0, upper=100, value=1.)
-    y_obs = mc.Normal("y_obs", value=od600[:,0].transpose(),
+    # y_obs = mc.Normal("y_obs", value=od600[:,0].transpose(),
+    #                   mu=y_mean, tau=sigma**-2, observed=True)
+    y_obs = mc.Normal("y_obs", value=flatod600,
                       mu=y_mean, tau=sigma**-2, observed=True)
     return vars()
 
@@ -56,7 +60,7 @@ def fit_gompertzmod():
 
     mc.MAP(model).fit(method='fmin_powell')
     m = mc.MCMC(model)
-    m.sample(iter=10000, burn=5000, thin=5)
+    m.sample(iter=100000, burn=95000, thin=5)
     #m.sample(iter=6000, burn=5000, thin=1)
     return m
 
@@ -66,7 +70,7 @@ def decorate_plot():
 def plot_gompertzmod(m, ffname):
     od600, time = loaddata(None)
     y_mean = []
-    fig1=plt.figure(num=1,figsize=(12,9))
+    fig1=plt.figure(num=1,figsize=(12,9),facecolor='w')
     ax1f1 = fig1.add_subplot(111)
     for lagtime, linslope, carcap, sigma in zip(m.lagtime.trace(),
                                                 m.linslope.trace(),
@@ -149,8 +153,8 @@ def gca(argv):
     mcmcoutput = fit_gompertzmod()
 
     growth_ffname = "growthfit.pdf"
-    #plot_gompertzmod(mcmcoutput, growth_ffname)
-    #evince = subprocess.check_output(["evince",growth_ffname])
+    plot_gompertzmod(mcmcoutput, growth_ffname)
+    evince = subprocess.check_output(["evince",growth_ffname])
 
     pars_ffname = "parfit.pdf"
     #plot_pardists(mcmcoutput, pars_ffname)
