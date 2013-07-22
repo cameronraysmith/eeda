@@ -29,17 +29,19 @@ def loaddata(argv):
 
 def gompertzmod():
     od600, timemins = loaddata(None)
-    od600red = od600[:,0:10]
+    od600red=np.delete(od600,[9,19,29],1)
+    #od600red = od600[:,0:10]
     flatod600 = np.reshape(od600red,od600red.size,order='F') #F = column-major
     flattime = np.resize(timemins,flatod600.size)
+
     # normal hyperparameter priors
     # lagtime = mc.Normal("lagtime", 100, 0.001, value=100)
     # linslope = mc.Normal("linslope", 0.05, 0.001, value=0.05)
     # carcap = mc.Normal("carcap", 1.2, 0.001, value=1.2)
 
     # uninformative hyperparameter priors
-    lagtime = mc.Uninformative("lagtime", value=100)
-    linslope = mc.Uninformative("linslope", value=0.05)
+    lagtime = mc.Uninformative("lagtime", value=300)
+    linslope = mc.Uninformative("linslope", value=0.005)
     carcap = mc.Uninformative("carcap", value=1.2)
 
     @mc.deterministic
@@ -48,9 +50,12 @@ def gompertzmod():
         return carcap*np.exp(-np.exp(linslope*np.exp(1)/carcap *
                                         (lagtime-time)+1))
 
-    sigma = mc.Uniform('sigma', lower=0, upper=100, value=1.)
+    sigma = mc.Uniform('sigma', lower=0, upper=100, value=.05)
+
+    # single observation
     # y_obs = mc.Normal("y_obs", value=od600[:,0].transpose(),
     #                   mu=y_mean, tau=sigma**-2, observed=True)
+    # multiple observations
     y_obs = mc.Normal("y_obs", value=flatod600,
                       mu=y_mean, tau=sigma**-2, observed=True)
     return vars()
@@ -59,9 +64,16 @@ def fit_gompertzmod():
     model = gompertzmod()
 
     mc.MAP(model).fit(method='fmin_powell')
-    m = mc.MCMC(model)
-    m.sample(iter=100000, burn=95000, thin=5)
-    #m.sample(iter=6000, burn=5000, thin=1)
+    m = mc.MCMC(model, db='pickle', dbname='gca.pickle')
+
+    # impose Adaptive Metropolis
+    # m.use_step_method(mc.AdaptiveMetropolis,
+    #     [m.lagtime, m.linslope, m.carcap, m.sigma])
+
+    m.sample(iter=10000, burn=5000, thin=5)
+    # low for testing
+    # m.sample(iter=6000, burn=5000, thin=1)
+    m.db.close()
     return m
 
 def decorate_plot():
@@ -150,17 +162,32 @@ def plot_parcorr(m):
         plt.close()
 
 def gca(argv):
+    """
+    use MCMC to fit modified Gompertz model parameters to
+    growth curve data and plot computed growth curves as well
+    as inferred distributions for Gompertz model parameters
+    """
+    # run MCMC to fit modified Gompertz model
     mcmcoutput = fit_gompertzmod()
+    print "\n"
 
+    # plot growth curves
     growth_ffname = "growthfit.pdf"
     plot_gompertzmod(mcmcoutput, growth_ffname)
-    evince = subprocess.check_output(["evince",growth_ffname])
+    #evince = subprocess.check_output(["evince",growth_ffname])
 
-    pars_ffname = "parfit.pdf"
-    #plot_pardists(mcmcoutput, pars_ffname)
-    #evince = subprocess.check_output(["evince",pars_ffname])
-
+    # plot parameter distributions
+    #parsplot_ffname = "parfit.pdf"
+    #plot_pardists(mcmcoutput, parsplot_ffname)
+    #evince = subprocess.check_output(["evince",parsplot_ffname])
     plot_parcorr(mcmcoutput)
+
+    # save parameter estimation data to csv file
+    pars_ffname = "parests.csv"
+    gompertzmodvars = ["lagtime", "linslope", "carcap", "sigma"]
+    mcmcoutput.write_csv(pars_ffname, variables=gompertzmodvars)
+
+    pdfcombine = subprocess.check_output(["pdftk", "growthfit.pdf", "lagtime.pdf", "linslope.pdf", "carcap.pdf", "sigma.pdf", "cat", "output", "allfigs.pdf"])
 
 if __name__ == "__main__":
     #import doctest
