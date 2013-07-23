@@ -171,6 +171,10 @@ def gca(argv):
     mcmcoutput = fit_gompertzmod()
     print "\n"
 
+    # save graphical representation of model
+    mc.graph.graph(mcmcoutput, name="gcagraph", format="pdf",
+                   prog="dot", legend=True, consts=True)
+
     # plot growth curves
     growth_ffname = "growthfit.pdf"
     plot_gompertzmod(mcmcoutput, growth_ffname)
