@@ -25,7 +25,11 @@ def loaddata(argv):
     od600 = np.loadtxt("data/20130608_40C.csv", delimiter=",",
                               skiprows=1, usecols=range(1,31))
     timemins = np.arange(0, 5*od600.shape[0],5)
-    od600red=np.delete(od600,[9,19,29],1) - od600[:,[9,19,29]].mean()
+    od600red = np.delete(od600,[9,19,29],1) - od600[:,[9,19,29]].mean()
+
+    # add noise for testing
+    #od600red = od600red + np.random.normal(0.0, 0.05, size=od600red.shape)
+
     flatod600 = np.reshape(od600red,od600red.size,order='F') #F = column-major
     flattime = np.resize(timemins,flatod600.size)
     return (od600, timemins, od600red, flatod600, flattime)
@@ -67,7 +71,15 @@ def fit_gompertzmod():
     model = gompertzmod()
 
     mc.MAP(model).fit(method='fmin_powell')
-    m = mc.MCMC(model, db='pickle', dbname='gca.pickle')
+    try:
+        with open('gca.pickle'):
+            m = mc.MCMC(model)
+    except IOError:
+        print "Saving simulation data to new pickle database"
+        m = mc.MCMC(model, db='pickle', dbname='gca.pickle')
+        #m = mc.MCMC(model, db='sqlite', dbname='gca.sqlite')
+
+    #m = mc.MCMC(model, db='pickle', dbname='gca.pickle')
     #m = mc.MCMC(model, db='sqlite', dbname='gca.sqlite')
 
     # impose Adaptive Metropolis
@@ -101,7 +113,8 @@ def plot_gompertzmod(m, ffname):
                                                 m.carcap.trace()):
         y = carcap*np.exp(-np.exp(linslope*np.exp(1)/carcap *
                             (lagtime-time)+1))
-        # plt.plot(time, y, color='gray', alpha=.75, zorder=-1)
+        # plot growth curve for each sampled parameter set
+        #plt.plot(time, y, color="#7A68A6", alpha=.75, zorder=2)
         y_mean.append(y)
 
     # plot mean curve
@@ -111,20 +124,20 @@ def plot_gompertzmod(m, ffname):
     decorate_plot()
 
     # vectorized bottom and top 5% quantiles for "confidence interval"
-    quanttest = mquantiles(y_mean, [0.05,0.95], axis=0)
+    quanttest = mquantiles(y_mean, [0.05, 0.95], axis=0)
     plt.fill_between(time, *quanttest, alpha=0.7, color="#7A68A6")
     plt.plot(time, quanttest[0], label="95% CI", color = "#7A68A6", alpha =0.7)
     plt.plot(time, quanttest[1], color = "#7A68A6", alpha =0.7)
-    #plt.plot(t[:,0], qs[0], label="95% CI", color = "#7A68A6", alpha =0.7)
 
-    plt.scatter( timemat, od600redtrans, color = "k", s = 5, alpha = 0.5 )
+    plt.scatter( timemat, od600redtrans,
+                    color = "k", s = 5, alpha = 0.5 )
     plt.legend(loc="lower right")
-    plt.savefig(ffname,bbox_inches='tight',
+    plt.savefig(ffname, bbox_inches='tight',
         facecolor=fig1.get_facecolor(), edgecolor='none')
     plt.close()
 
 def plot_pardists(m, ffname):
-    fig2=plt.figure(num=2, figsize=(12,15), facecolor='w')
+    fig2 = plt.figure(num=2, figsize=(12, 15), facecolor='w')
 
     ax1f2 = fig2.add_subplot(411)
     ax1f2.set_autoscaley_on(False)
@@ -187,13 +200,18 @@ def gca(argv):
     """
     # run MCMC to fit modified Gompertz model
     mcmcoutput = fit_gompertzmod()
-    print "\n"
+    print " "
 
     # save graphical representation of model
-    mc.graph.graph(mcmcoutput, name="gcagraph", format="pdf",
+    try:
+        with open('gcagraph.pdf'): pass
+    except IOError:
+        print "Saving graphical representation"
+        mc.graph.graph(mcmcoutput, name="gcagraph", format="pdf",
                    prog="dot", legend=True, consts=True)
 
     # plot growth curves
+    print "Plotting growth curves"
     growth_ffname = "growthfit.pdf"
     plot_gompertzmod(mcmcoutput, growth_ffname)
     #evince = subprocess.check_output(["evince",growth_ffname])
@@ -202,13 +220,16 @@ def gca(argv):
     #parsplot_ffname = "parfit.pdf"
     #plot_pardists(mcmcoutput, parsplot_ffname)
     #evince = subprocess.check_output(["evince",parsplot_ffname])
+    print "Plotting parameter distributions"
     plot_parcorr(mcmcoutput)
 
     # save parameter estimation data to csv file
+    print "Saving parameter estimates"
     pars_ffname = "parests.csv"
     gompertzmodvars = ["lagtime", "linslope", "carcap", "sigma"]
     mcmcoutput.write_csv(pars_ffname, variables=gompertzmodvars)
 
+    print "Combining figures"
     pdfcombine = subprocess.check_output(["pdftk", "growthfit.pdf", "lagtime.pdf", "linslope.pdf", "carcap.pdf", "sigma.pdf", "cat", "output", "allfigs.pdf"])
 
 if __name__ == "__main__":
