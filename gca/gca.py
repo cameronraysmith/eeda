@@ -20,6 +20,10 @@ import subprocess
 from scipy.stats.mstats import mquantiles
 from pymc.Matplot import plot as mcplot
 
+def gompertzfun(lagtime, linslope, carcap, time):
+    g = carcap*np.exp(-np.exp(linslope*np.exp(1)/carcap
+                                            * (lagtime-time)+1))
+    return g
 
 def loaddata(argv):
     od600 = np.loadtxt("data/20130608_40C.csv", delimiter=",",
@@ -36,26 +40,21 @@ def loaddata(argv):
 
 def gompertzmod():
     _, _, _, flatod600, flattime = loaddata(None)
-    #od600red=np.delete(od600,[9,19,29],1)
-    #od600red = od600[:,0:10]
-    #flatod600 = np.reshape(od600red,od600red.size,order='F') #F = column-major
-    #flattime = np.resize(timemins,flatod600.size)
-
-    # normal hyperparameter priors
-    # lagtime = mc.Normal("lagtime", 100, 0.001, value=100)
-    # linslope = mc.Normal("linslope", 0.05, 0.001, value=0.05)
-    # carcap = mc.Normal("carcap", 1.2, 0.001, value=1.2)
 
     # uninformative hyperparameter priors
     lagtime = mc.Uninformative("lagtime", value=300)
     linslope = mc.Uninformative("linslope", value=0.005)
     carcap = mc.Uninformative("carcap", value=1.2)
 
-    @mc.deterministic
-    def y_mean(lagtime=lagtime, linslope=linslope,
-                carcap=carcap, time=flattime):
-        return carcap*np.exp(-np.exp(linslope*np.exp(1)/carcap *
-                                        (lagtime-time)+1))
+    # @mc.deterministic
+    # def y_mean(lagtime=lagtime, linslope=linslope,
+    #             carcap=carcap, time=flattime):
+    #     return gompertzfun(lagtime, linslope, carcap, time)
+
+    y_mean = mc.Lambda('y_mean',
+        lambda lagtime=lagtime, linslope=linslope,\
+               carcap=carcap, time=flattime: \
+            gompertzfun(lagtime, linslope, carcap, time))
 
     sigma = mc.Uniform('sigma', lower=0, upper=100, value=.05)
 
@@ -65,6 +64,7 @@ def gompertzmod():
     # observation of multiple growth curves
     y_obs = mc.Normal("y_obs", value=flatod600,
                       mu=y_mean, tau=sigma**-2, observed=True)
+    #y_sim = mc.Normal("y_sim", mu=y_mean, tau=sigma**-2)
     return vars()
 
 def fit_gompertzmod():
@@ -91,7 +91,7 @@ def fit_gompertzmod():
     # medium
     #m.sample(iter=10000, burn=5000, thin=5)
     # long
-    m.sample(iter=20000, burn=15000, thin=5)
+    m.sample(iter=30000, burn=20000, thin=10)
 
     m.db.close()
     return m
@@ -108,11 +108,13 @@ def plot_gompertzmod(m, ffname):
     y_mean = []
     fig1 = plt.figure(num=1, figsize=(12, 9), facecolor='w')
     ax1f1 = fig1.add_subplot(111)
-    for lagtime, linslope, carcap in zip(m.lagtime.trace(),
+    for lagtime, linslope, carcap, sigma in zip(m.lagtime.trace(),
                                                 m.linslope.trace(),
-                                                m.carcap.trace()):
+                                                m.carcap.trace(),
+                                                m.sigma.trace()):
         y = carcap*np.exp(-np.exp(linslope*np.exp(1)/carcap *
                             (lagtime-time)+1))
+        y += np.random.normal(0.0, sigma, size=time.shape)
         # plot growth curve for each sampled parameter set
         #plt.plot(time, y, color="#7A68A6", alpha=.75, zorder=2)
         y_mean.append(y)
@@ -125,12 +127,12 @@ def plot_gompertzmod(m, ffname):
 
     # vectorized bottom and top 5% quantiles for "confidence interval"
     quanttest = mquantiles(y_mean, [0.05, 0.95], axis=0)
-    plt.fill_between(time, *quanttest, alpha=0.7, color="#7A68A6")
-    plt.plot(time, quanttest[0], label="95% CI", color = "#7A68A6", alpha =0.7)
-    plt.plot(time, quanttest[1], color = "#7A68A6", alpha =0.7)
+    plt.fill_between(time, *quanttest, alpha=0.7, color="#218559")
+    plt.plot(time, quanttest[0], label="95% CI", color = "#218559", alpha =0.7)
+    plt.plot(time, quanttest[1], color = "#218559", alpha =0.7)
 
-    plt.scatter( timemat, od600redtrans,
-                    color = "k", s = 5, alpha = 0.5 )
+    plt.scatter( timemat, od600redtrans, label="data",
+                    color = "grey", s = 5, alpha = 0.5, zorder=0 )
     plt.legend(loc="lower right")
     plt.savefig(ffname, bbox_inches='tight',
         facecolor=fig1.get_facecolor(), edgecolor='none')
