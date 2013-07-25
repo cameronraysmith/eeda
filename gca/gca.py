@@ -6,9 +6,10 @@ function from:
 Modeling of the bacterial growth curve. Applied and environmental
 microbiology 56:1875–81.
 
-y = carcap exp [-exp[linslope*exp[1]/carcap * (lagtime-time)+1]]
+y = initial + carcap exp [-exp[linslope*exp[1]/carcap * (lagtime-time)+1]]
 
-lagtime = lambda ~ 100 -
+initial
+lagtime = lambda ~ 300 -
 linslope = um ~ 0.05 - linear region slope
 carcap = A ~ 1.2 - carrying capacity
 """
@@ -20,9 +21,8 @@ import subprocess
 from scipy.stats.mstats import mquantiles
 from pymc.Matplot import plot as mcplot
 
-def gompertzfun(lagtime, linslope, carcap, time):
-    g = carcap*np.exp(-np.exp(linslope*np.exp(1)/carcap
-                                            * (lagtime-time)+1))
+def gompertzfun(lagtime, linslope, carcap, time, initial=0):
+    g = initial + carcap*np.exp(-np.exp(linslope*np.exp(1)*(lagtime-time)/carcap+1))
     return g
 
 def loaddata(argv):
@@ -30,6 +30,9 @@ def loaddata(argv):
                               skiprows=1, usecols=range(1,31))
     timemins = np.arange(0, 5*od600.shape[0],5)
     od600red = np.delete(od600,[9,19,29],1) - od600[:,[9,19,29]].mean()
+
+    # thin data for testing
+    #od600red = np.delete(od600red,np.arange(0,20),1)
 
     # add noise for testing
     #od600red = od600red + np.random.normal(0.0, 0.05, size=od600red.shape)
@@ -41,22 +44,65 @@ def loaddata(argv):
 def gompertzmod():
     _, _, _, flatod600, flattime = loaddata(None)
 
-    # uninformative hyperparameter priors
-    lagtime = mc.Uninformative("lagtime", value=300)
+    # uninformative parameter priors
+    lagtime = mc.Uninformative("lagtime", value=200)
     linslope = mc.Uninformative("linslope", value=0.005)
     carcap = mc.Uninformative("carcap", value=1.2)
+
+    # # lognormal parameter priors
+    # lagtime = mc.Lognormal("lagtime", mu=1, tau=1)
+    # linslope = mc.Lognormal("linslope", mu=1, tau=1)
+    # carcap = mc.Lognormal("carcap", mu=1, tau=1)
+
+    # # 1-hyperparameters for lognormal priors
+    # lagtimemu = mc.Normal('lagtimemu', mu=1, tau=1)
+    # lagtimetau = mc.Gamma('lagtimetau', alpha=0.1, beta=0.1)
+    # linslopemu = mc.Normal('linslopemu', mu=1, tau=1)
+    # linslopetau = mc.Gamma('linslopetau', alpha=0.1, beta=0.1)
+    # carcapmu = mc.Normal('carcapmu', mu=1, tau=1)
+    # carcaptau = mc.Gamma('carcaptau', alpha=0.1, beta=0.1)
+
+    # # 2-hyperparameters?
+    # m_l = mc.Uninformative("m_l", value=1)
+    # s_l = mc.Uninformative("s_l", value=1)
+    # r_l = mc.Uninformative("r_l", value=0.1)
+    # v_l = mc.Uninformative("v_l", value=0.1)
+    # m_m = mc.Uninformative("m_m", value=1)
+    # s_m = mc.Uninformative("s_m", value=1)
+    # r_m = mc.Uninformative("r_m", value=0.1)
+    # v_m = mc.Uninformative("v_m", value=0.1)
+    # m_D = mc.Uninformative("m_D", value=1)
+    # s_D = mc.Uninformative("s_D", value=1)
+    # r_D = mc.Uninformative("r_D", value=0.1)
+    # v_D = mc.Uninformative("v_D", value=0.1)
+
+    # # 1-hyperparameters for lognormal priors
+    # lagtimemu = mc.Normal('lagtimemu', mu=m_l, tau=s_l)
+    # lagtimetau = mc.Gamma('lagtimetau', alpha=r_l, beta=v_l)
+    # linslopemu = mc.Normal('linslopemu', mu=m_m, tau=s_m)
+    # linslopetau = mc.Gamma('linslopetau', alpha=r_m, beta=v_m)
+    # carcapmu = mc.Normal('carcapmu', mu=m_D, tau=s_D)
+    # carcaptau = mc.Gamma('carcaptau', alpha=r_D, beta=v_D)
+
+    # # lognormal parameter priors
+    # lagtime = mc.Lognormal("lagtime", mu=lagtimemu, tau=lagtimetau)
+    # linslope = mc.Lognormal("linslope", mu=linslopemu, tau=linslopetau)
+    # carcap = mc.Lognormal("carcap", mu=carcapmu, tau=carcaptau)
 
     # @mc.deterministic
     # def y_mean(lagtime=lagtime, linslope=linslope,
     #             carcap=carcap, time=flattime):
     #     return gompertzfun(lagtime, linslope, carcap, time)
-
+    initial = mc.Normal("initial", mu=0.0045, tau=0.001**-2)
     y_mean = mc.Lambda('y_mean',
         lambda lagtime=lagtime, linslope=linslope,\
-               carcap=carcap, time=flattime: \
-            gompertzfun(lagtime, linslope, carcap, time))
+               carcap=carcap, time=flattime, initial=initial: \
+            gompertzfun(lagtime, linslope, carcap, time, initial))
 
-    sigma = mc.Uniform('sigma', lower=0, upper=100, value=.05)
+    sigma = mc.Uniform('sigma', lower=0, upper=1, value=.05)
+    # sigma_alpha = mc.Uninformative("a", value=0.1)
+    # sigma_beta = mc.Uninformative("b", value=0.1)
+    # sigma = mc.InverseGamma('sigma', alpha=sigma_alpha, beta=sigma_beta)
 
     # observation of a single growth curve
     # y_obs = mc.Normal("y_obs", value=od600[:,0].transpose(),
@@ -71,6 +117,8 @@ def fit_gompertzmod():
     model = gompertzmod()
 
     mc.MAP(model).fit(method='fmin_powell')
+    y_sim = mc.Normal("y_sim", mu=model['y_mean'], tau=model['sigma']**-2)
+    model['y_sim'] = y_sim
     try:
         with open('gca.pickle'):
             m = mc.MCMC(model)
@@ -83,7 +131,7 @@ def fit_gompertzmod():
     #m = mc.MCMC(model, db='sqlite', dbname='gca.sqlite')
 
     # impose Adaptive Metropolis
-    # m.use_step_method(mc.AdaptiveMetropolis,
+    #m.use_step_method(mc.AdaptiveMetropolis,
     #     [m.lagtime, m.linslope, m.carcap, m.sigma])
 
     # low for testing
@@ -91,8 +139,9 @@ def fit_gompertzmod():
     # medium
     #m.sample(iter=10000, burn=5000, thin=5)
     # long
-    m.sample(iter=30000, burn=20000, thin=10)
-
+    m.sample(iter=50000, burn=40000, thin=10)
+    # longer
+    #m.sample(iter=150000, burn=140000, thin=10)
     m.db.close()
     return m
 
@@ -108,16 +157,18 @@ def plot_gompertzmod(m, ffname):
     y_mean = []
     fig1 = plt.figure(num=1, figsize=(12, 9), facecolor='w')
     ax1f1 = fig1.add_subplot(111)
-    for lagtime, linslope, carcap, sigma in zip(m.lagtime.trace(),
-                                                m.linslope.trace(),
-                                                m.carcap.trace(),
-                                                m.sigma.trace()):
-        y = carcap*np.exp(-np.exp(linslope*np.exp(1)/carcap *
-                            (lagtime-time)+1))
-        y += np.random.normal(0.0, sigma, size=time.shape)
-        # plot growth curve for each sampled parameter set
-        #plt.plot(time, y, color="#7A68A6", alpha=.75, zorder=2)
-        y_mean.append(y)
+    # for lagtime, linslope, carcap, sigma in zip(m.lagtime.trace(),
+    #                                             m.linslope.trace(),
+    #                                             m.carcap.trace(),
+    #                                             m.sigma.trace()):
+    #     y = carcap*np.exp(-np.exp(linslope*np.exp(1)/carcap *
+    #                         (lagtime-time)+1))
+    #     y += np.random.normal(0.0, sigma, size=time.shape)
+    #     # plot growth curve for each sampled parameter set
+    #     #plt.plot(time, y, color="#7A68A6", alpha=.75, zorder=2)
+    #     y_mean.append(y)
+
+    y_mean = np.reshape(m.y_sim.trace(),(m.y_sim.trace().shape[0]*od600red.shape[1],od600red.shape[0]))
 
     # plot mean curve
     plt.plot(time, np.mean(y_mean, axis=0),
