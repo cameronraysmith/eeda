@@ -1,1 +1,3 @@
-ee data analysis
+##ee data analysis
+* gca - growth curve analysis
+* cns - chemostat nutrient switching
