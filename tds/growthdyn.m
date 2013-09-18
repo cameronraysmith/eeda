@@ -75,7 +75,7 @@ T = avgtemp + (hightemp-avgtemp)*trapezoid(tt*2*pi/tempperiod,24);
 fprintf('\nSummary:\n------------------------\n')
 fprintf('low temp: %0.0f, high temp: %0.0f\n',lowtemp,hightemp);
 fprintf('low_t gr: %0.3f, high_t gr: %0.3f\n',growthfromtemp(lowtemp),growthfromtemp(hightemp));
-fprintf('low_t d_gr: %0.3f, high_t d_gr: %0.3f\n',growthsenstemp(lowtemp),growthsenstemp(hightemp));
+fprintf('low_t d_gr: %0.3f, high_t d_gr: %0.3f\n',dgrowthfromtemp(lowtemp),dgrowthfromtemp(hightemp));
 fprintf('temperature period: %0.0f, dilution period: %0.0f\n',tempperiod,dilperiod);
 fprintf('dilution factor: %0.0f\n',dilfactor);
 fprintf('time step: %0.5f, number of periods: %0.0f\n',dt,totalperiods);
@@ -97,12 +97,12 @@ for i=1:length(tt)
     if tt(i) >= dilcount*dilperiod
         dildens = dd(i-1)/dilfactor;
         fprintf('dilution at t=%0.2f, old dens=%0.2f, new dens=%0.2f, T=%0.0f\n',...
-            tt(i),dd(i-1),dildens,T(i)); 
+            tt(i),dd(i-1),dildens,T(i));
         toff = tgompertz(dildens,initialdens,lagtime,growthfromtemp(T(i)),3*1.0071);
         if toff >= 0
             toff = -tt(i) + toff;
         else
-              fprintf('t_off less than 0: %0.3f\n',toff);  
+            fprintf('t_off less than 0: %0.3f\n',toff);
             toff = -tt(i);
         end
         dilcount=dilcount+1;
